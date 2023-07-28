@@ -1,0 +1,10 @@
+version: '2.0'
+services:
+  db-rest:
+    image: derhuerst/db-rest:6
+    environment:
+      - REDIS_URL=redis://redis
+    ports:
+      - '3000:3000'
+  redis:
+    image: redis
