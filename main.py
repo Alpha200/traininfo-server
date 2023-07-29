@@ -72,7 +72,7 @@ async def get_info(authorization: Annotated[Union[str, None], Header()] = None):
             return {
                 'line': part['line']['name'],
                 'from': part['origin']['name'],
-                'to': part['destination']['name'],
+                'to': part['direction'],
                 'delay': part['departureDelay'] / 60,
                 'platform': part['departurePlatform'],
                 'departure': formatted_departure,
