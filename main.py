@@ -1,12 +1,14 @@
 import datetime
 import logging
 import os
-from typing import Annotated, Union, Tuple
+from threading import Timer
+from typing import Annotated, Union, Tuple, Optional
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Body
 from geopy import distance
 from pydantic import BaseModel
 
+from gmaps_resolver import GMapsResolver
 from traccar_client import TraccarClient
 from transport_client import TransportClient
 
@@ -27,8 +29,8 @@ default_to_latitude, default_to_longitude = os.environ.get("TRAIN_INFO_DEFAULT_T
 
 app = FastAPI()
 
-current_journey_stop: JourneyStop
-special_journey_stop = False
+current_journey_stop: Optional[JourneyStop] = None
+reset_destination_timer: Optional[Timer] = None
 
 traccar_client = TraccarClient()
 transport_client = TransportClient()
@@ -40,7 +42,7 @@ async def get_info(authorization: Annotated[Union[str, None], Header()] = None):
 
     current_latitude, current_longitude = get_traccar_position()
 
-    if special_journey_stop:
+    if current_journey_stop is not None:
         logger.info("Using special journey stop")
         to_latitude = current_journey_stop.latitude
         to_longitude = current_journey_stop.longitude
@@ -81,13 +83,26 @@ async def get_info(authorization: Annotated[Union[str, None], Header()] = None):
     raise HTTPException(status_code=404, detail="Could not find good journey")
 
 
-@app.post("/journey/to")
-async def set_journey_to(journey_stop: JourneyStop, authorization: Annotated[Union[str, None], Header()] = None):
-    global current_journey_stop, special_journey_stop
+@app.post("/journey/destination")
+async def set_journey_destination(journey_stop: JourneyStop, authorization: Annotated[Union[str, None], Header()] = None):
     validate_authorization(authorization)
-    current_journey_stop = journey_stop
-    special_journey_stop = True
+    set_current_destination(journey_stop)
     return {}
+
+
+@app.post("/journey/destination/gmaps")
+async def set_journey_destination(body: Annotated[str, Body(..., media_type="plain/text")], authorization: Annotated[Union[str, None], Header()] = None):
+    validate_authorization(authorization)
+
+    if body is None or not body.startswith('https://maps.app.goo.gl'):
+        raise HTTPException(status_code=400, detail="Invalid gmaps link")
+
+    resolver = GMapsResolver()
+    lat, lng = resolver.resolve_url(body)
+    journey_stop = JourneyStop(latitude=lat, longitude=lng)
+    set_current_destination(journey_stop)
+
+    return {'lat': lat, 'lng': lng}
 
 
 def validate_authorization(token):
@@ -103,3 +118,24 @@ def get_traccar_position():
 
 def is_in_home_zone(position: Tuple[float, float]) -> bool:
     return distance.distance((home_latitude, home_longitude), position).m < 500
+
+
+def reset_destination():
+    global current_journey_stop, reset_destination_timer
+    logger.info("Special journey stop has been reset")
+    current_journey_stop = None
+    reset_destination_timer = None
+
+
+def set_current_destination(journey_stop: JourneyStop):
+    global current_journey_stop, reset_destination_timer
+
+    current_journey_stop = journey_stop
+
+    logger.info(f"Special journey stop set to {current_journey_stop.latitude},{current_journey_stop.longitude}")
+
+    if reset_destination_timer is not None:
+        reset_destination_timer.cancel()
+
+    reset_destination_timer = Timer(3600.0, reset_destination)
+    reset_destination_timer.start()
