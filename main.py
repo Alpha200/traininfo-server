@@ -74,20 +74,23 @@ async def get_info(authorization: Annotated[Union[str, None], Header()] = None):
     journeys = get_journey_list_for_current_destination()
 
     def map_trip(trip):
+        from_name = trip['origin']['name'] if 'name' in trip['origin'] else None
+        to_name = trip['destination']['name'] if 'name' in trip['destination'] else None
+
         return {
             'departure': convert_date_to_timestamp(trip['departure']),
             'arrival': convert_date_to_timestamp(trip['arrival']),
             'walking': 'walking' in trip and trip['walking'],
             'distance': trip['distance'] if 'distance' in trip else None,
             'line': trip['line']['name'] if 'line' in trip else None,
+            'from': from_name,
+            'to': to_name
         }
 
     def map_journey(journey):
         return {
             'refresh_token': journey['refreshToken'],
-            'trips': [
-                [map_trip(trip) for trip in journey['legs']]
-            ]
+            'trips': [map_trip(trip) for trip in journey['legs']]
         }
 
     if 'journeys' in journeys:
