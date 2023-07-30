@@ -40,35 +40,14 @@ transport_client = TransportClient()
 async def get_info(authorization: Annotated[Union[str, None], Header()] = None):
     validate_authorization(authorization)
 
-    current_latitude, current_longitude = get_traccar_position()
-
-    if current_journey_stop is not None:
-        logger.info("Using special journey stop")
-        to_latitude = current_journey_stop.latitude
-        to_longitude = current_journey_stop.longitude
-    elif is_in_home_zone((current_latitude, current_longitude)):
-        logger.info("Using default to position")
-        to_latitude = default_to_latitude
-        to_longitude = default_to_longitude
-    else:
-        logger.info("Using home position")
-        to_latitude = home_latitude
-        to_longitude = home_longitude
-
-    journeys = transport_client.get_journey(
-        current_latitude,
-        current_longitude,
-        to_latitude,
-        to_longitude,
-    )
+    journeys = get_journey_list_for_current_destination()
 
     if 'journeys' in journeys and len(journeys['journeys']) > 0:
         selected_journey = journeys['journeys'][0]['legs']
         part = next((part for part in selected_journey if 'walking' not in part or not part['walking']), None)
 
         if part is not None:
-
-            parsed_departure = datetime.datetime.fromisoformat(part['departure'])
+            parsed_departure = datetime.datetime.fromisoformat(part['plannedDeparture'])
             formatted_departure = parsed_departure.strftime('%H:%M')
 
             return {
@@ -81,6 +60,68 @@ async def get_info(authorization: Annotated[Union[str, None], Header()] = None):
             }
 
     raise HTTPException(status_code=404, detail="Could not find good journey")
+
+
+def convert_date_to_timestamp(date: str):
+    date = datetime.datetime.fromisoformat(date)
+    return int(date.timestamp())
+
+
+@app.get("/journey/details")
+async def get_info(authorization: Annotated[Union[str, None], Header()] = None):
+    validate_authorization(authorization)
+
+    journeys = get_journey_list_for_current_destination()
+
+    def map_trip(trip):
+        return {
+            'departure': convert_date_to_timestamp(trip['departure']),
+            'arrival': convert_date_to_timestamp(trip['arrival']),
+            'walking': 'walking' in trip and trip['walking'],
+            'distance': trip['distance'] if 'distance' in trip else None,
+            'line': trip['line']['name'] if 'line' in trip else None,
+        }
+
+    def map_journey(journey):
+        return {
+            'refresh_token': journey['refreshToken'],
+            'trips': [
+                [map_trip(trip) for trip in journey['legs']]
+            ]
+        }
+
+    if 'journeys' in journeys:
+        return [map_journey(journey) for journey in journeys['journeys']]
+
+    return []
+
+
+def get_journey_list_for_current_destination():
+    current_latitude, current_longitude = get_traccar_position()
+    to_latitude, to_longitude = get_journey_destination(current_latitude, current_longitude)
+    journeys = transport_client.get_journey(
+        current_latitude,
+        current_longitude,
+        to_latitude,
+        to_longitude,
+    )
+    return journeys
+
+
+def get_journey_destination(current_latitude, current_longitude):
+    if current_journey_stop is not None:
+        logger.info("Using special journey stop")
+        to_latitude = current_journey_stop.latitude
+        to_longitude = current_journey_stop.longitude
+    elif is_in_home_zone((current_latitude, current_longitude)):
+        logger.info("Using default to position")
+        to_latitude = default_to_latitude
+        to_longitude = default_to_longitude
+    else:
+        logger.info("Using home position")
+        to_latitude = home_latitude
+        to_longitude = home_longitude
+    return to_latitude, to_longitude
 
 
 @app.post("/journey/destination")
