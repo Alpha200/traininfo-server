@@ -79,9 +79,14 @@ async def get_info(authorization: Annotated[Union[str, None], Header()] = None):
 
         return {
             'departure': convert_date_to_timestamp(trip['departure']),
+            'departureDelay': trip['departureDelay'],
+            'departurePlatform': trip.get('departurePlatform', None),
             'arrival': convert_date_to_timestamp(trip['arrival']),
+            'arrivalDelay': trip['arrivalDelay'],
+            'arrivalPlatform': trip.get('arrivalPlatform', None),
+            'direction': trip.get('direction', None),
             'walking': 'walking' in trip and trip['walking'],
-            'distance': trip['distance'] if 'distance' in trip else None,
+            'distance': trip.get('distance', None),
             'line': trip['line']['name'] if 'line' in trip else None,
             'from': from_name,
             'to': to_name
