@@ -79,10 +79,10 @@ async def get_info(authorization: Annotated[Union[str, None], Header()] = None):
 
         return {
             'departure': convert_date_to_timestamp(trip['departure']),
-            'departureDelay': trip['departureDelay'],
+            'departureDelay': int(trip['departureDelay'] / 60) if trip['departureDelay'] is not None else None,
             'departurePlatform': trip.get('departurePlatform', None),
             'arrival': convert_date_to_timestamp(trip['arrival']),
-            'arrivalDelay': trip['arrivalDelay'],
+            'arrivalDelay': int(trip['arrivalDelay'] / 60) if trip['arrivalDelay'] is not None else None,
             'arrivalPlatform': trip.get('arrivalPlatform', None),
             'direction': trip.get('direction', None),
             'walking': 'walking' in trip and trip['walking'],
